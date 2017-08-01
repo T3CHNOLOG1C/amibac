@@ -30,3 +30,6 @@ Download file from the [Releases](https://github.com/moriczgergo/amibac/releases
  * Hold B to exit
 
 ## To-do
+
+ * [ ] Fix screenshots
+ * [ ] GUI
