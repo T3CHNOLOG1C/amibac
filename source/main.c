@@ -424,6 +424,7 @@ Result nfcLoop()
 				printf("\x1b[32;1mProcessing finished!\nRemove the Amiibo.\x1b[0m\n");
 				printf("\x1b[34;1mPress Y to restart scanning.\x1b[33;1m\n");
 			}
+			gfxSwapBuffers();
 		}
 	}
 
