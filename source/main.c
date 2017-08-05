@@ -5,6 +5,22 @@
 #include <unistd.h>
 #include <3ds.h>
 
+static Handle nfcHandle;
+
+Result AmiiboGetAppID(u32 *appid)
+{
+	Result ret = 0;
+	u32* cmdbuf = getThreadCommandBuffer();
+
+	cmdbuf[0] = IPC_MakeHeader(0x402, 0, 0);
+
+	if(R_FAILED(ret = svcSendSyncRequest(nfcHandle)))return ret;
+	ret = cmdbuf[1];
+	*appid = cmdbuf[4];
+
+	return ret;
+}
+
 Result nfcLoop()
 {
 	Result ret = 0;
@@ -17,7 +33,7 @@ Result nfcLoop()
 	NFC_AmiiboSettings amiibosettings;
 	NFC_AmiiboConfig amiiboconfig;
 
-	u32 amiibo_appid = 0x00000000;
+	u32 appid = 0x00000000;
 	u32 appid_db[5] = {//Amiibo APPID database from 3dsbrew wiki.
 					   0x10110E00,
 					   0x0014F000,
@@ -160,29 +176,38 @@ Result nfcLoop()
 
 				appdata_initialized = 1;
 
+				printf("\x1b[33;1m");
+
 				bool foundAppId = false;
-				for (int i = 0; i < 5 /* 5 = length of our appid database */ && !foundAppId; i++)
-				{ //Loop thru' appid database and find the currently used one
-					ret = nfcOpenAppData(appid_db[i]);
-					if (R_FAILED(ret))
-					{
-						//CRASH
-						printf("nfcOpenAppData() failed.\n");
-						if (ret == NFC_ERR_APPDATA_UNINITIALIZED)
+				if (AmiiboGetAppID(&appid) == 0x00000000) { //Fetch AppID from an unknown nfc:m command
+					ret = nfcOpenAppData(appid); //Try to open Amiibo App Data with fetched AppID.
+					if (R_FAILED(ret)){ //On fail:
+						if (ret == NFC_ERR_APPDATA_UNINITIALIZED) //If Amiibo is initialized:
 						{
-							printf("This appdata isn't initialized.\n");
-							appdata_initialized = 0;
-						}
-						if (appdata_initialized)
-						{
+							printf("\x1b[31;1mPlease initialize your Amiibo."); //middle center
+							break;
+						}/* else {
+							printf("\x1b[17;16HAn error occurred."); //middle center
+							quit();
+						}*/
+					} else { //Else:
+						printf("Successfully used nfc:m method.\n");
+						foundAppId = true; //Set AppID Status to True
+					}
+				} else {
+					for (int i = 0; i < 5; i++) { //Loop thru' AppID database and try to find AppID.
+						ret = nfcOpenAppData(appid_db[i]); //Try to open Amiibo App Data with current AppID.
+						if (R_FAILED(ret)){ //On fail:
+							if (ret == NFC_ERR_APPDATA_UNINITIALIZED) //If Amiibo is initialized:
+							{
+								printf("This appdata isn't initialized.\n");
+								appdata_initialized = 0;
+								break;
+							}
+						} else { //Else:
+							foundAppId = true; //Set AppID Search Status to True
 							break;
 						}
-					}
-					else
-					{
-						amiibo_appid = appid_db[i];
-						foundAppId = true;
-						break;
 					}
 				}
 
@@ -287,7 +312,7 @@ Result nfcLoop()
 							{
 								printf("Initializing Amiibo appdata...\n");
 
-								ret = nfcInitializeWriteAppData(amiibo_appid, appdata, sizeof(appdata));
+								ret = nfcInitializeWriteAppData(appid, appdata, sizeof(appdata));
 								if (R_FAILED(ret))
 								{
 									//CRASH
@@ -339,7 +364,7 @@ Result nfcLoop()
 						printf("\x1b[34;1mPress \x1b[33;1mB \x1b[34;1mto exit.");
 						break;
 					}
-					printf("\x1b[33;1mBacking up Amiibo ID \x1b[32;1m%s\x1b[33;1m...\n", uidstr);
+					printf("Backing up Amiibo ID \x1b[32;1m%s\x1b[33;1m...\n", uidstr);
 					printf("Amiibo data successfully loaded.\n");
 
 					printf("Last Write Date: Year %u, Month %u, Day %u\n", amiiboconfig.lastwritedate_year, amiiboconfig.lastwritedate_month, amiiboconfig.lastwritedate_day);
@@ -454,6 +479,7 @@ int main()
 	}
 	else
 	{
+		nfcHandle = nfcGetSessionHandle();
 		ret = nfcLoop();
 		nfcExit();
 	}
